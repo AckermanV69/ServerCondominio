@@ -44,11 +44,11 @@ export const usersdelete = async(req, res) => {
 export const usersput = async(req, res) => {
     try {
         const { id } = req.params;
-        const { nombre, correo, password, tlf } = req.body; // Quitamos apellido, añadimos tlf
+        const { nombre, correo, password, telefono, tlf } = req.body; // Quitamos apellido, añadimos tlf
 
         const { rows } = await pool.query(
-            'UPDATE usuarios SET nombre = $1, correo = $2, password = $3, tlf = $4 WHERE id = $5 RETURNING *', 
-            [nombre, correo, password, tlf, id]
+            'UPDATE usuarios SET nombre = $1, correo = $2, password = $3, telefono = $4 WHERE id = $5 RETURNING *', 
+            [nombre, correo, password, telefono ?? tlf ?? null, id]
         );
 
         res.json({
@@ -62,14 +62,18 @@ export const usersput = async(req, res) => {
 
 // Login CORREGIDO
 export const loginUsuario = async (req, res) => {
-    // Recibimos 'correo' en lugar de 'email'
-    const { correo, password } = req.body;
+    // Aceptamos 'correo' o 'email' desde el frontend
+    const { correo, email, password } = req.body;
+    const correoUsuario = correo ?? email;
+    if (!correoUsuario) {
+        return res.status(400).json({ message: "Debe enviar correo o email." });
+    }
 
     try {
         // Buscamos en la columna 'correo'
         const result = await pool.query(
             "SELECT * FROM usuarios WHERE correo = $1",
-            [correo]
+            [correoUsuario]
         );
 
         if (result.rows.length === 0) {
@@ -102,14 +106,29 @@ export const loginUsuario = async (req, res) => {
 
 // Registro CORREGIDO
 export const signUpUsuario = async (req, res) => {
-    const { nombre, cedula, correo, password, rol, telefono, deuda, condominio } = req.body;
+    const {
+        nombre,
+        cedula,
+        correo,
+        email,
+        password,
+        rol,
+        telefono,
+        tlf,
+        deuda,
+        condominio
+    } = req.body;
+    const correoUsuario = correo ?? email;
+    if (!correoUsuario) {
+        return res.status(400).json({ message: "Debe enviar correo o email." });
+    }
 
     try {
         // Insertamos los datos en la tabla 'usuarios'
         const result = await pool.query(
             `INSERT INTO usuarios (nombre, cedula, correo, password, rol, telefono, deuda, condominio) 
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
-            [nombre, cedula, correo, password, rol, telefono, deuda, condominio]
+            [nombre, cedula, correoUsuario, password, rol, telefono ?? tlf ?? null, deuda, condominio]
         );
 
         res.status(201).json({
@@ -145,13 +164,14 @@ export const getEstadosConCiudades = async (req, res) => {
 
 // Actualizar datos de condominio del usuario
 export const actualizarCondominioUsuario = async (req, res) => {
-    const { correo, apartamento, seccion } = req.body;
+    const { correo, email, apartamento, seccion } = req.body;
+    const correoUsuario = correo ?? email;
 
     try {
-        // Buscamos por email y actualizamos apartamento y seccion
+        // Buscamos por correo y actualizamos apartamento y seccion
         const result = await pool.query(
-            'UPDATE usuarios SET apartamento = $1, seccion = $2 WHERE email = $3 RETURNING *',
-            [apartamento, seccion, correo]
+            'UPDATE usuarios SET apartamento = $1, seccion = $2 WHERE correo = $3 RETURNING *',
+            [apartamento, seccion, correoUsuario]
         );
 
         if (result.rows.length === 0) {
@@ -247,14 +267,46 @@ export const registrarCargaEspecial = async (req, res) => {
 };
 
 export const updateUsuarioCondominio = async (req, res) => {
-    // Recibimos 'correo' y 'condominio_id' desde el celular
-    const { correo, condominio_id } = req.body;
+    // Acepta 'correo' o 'email' y actualiza condominio_id y/o datos de unidad
+    const { correo, email, condominio_id, apartamento, seccion } = req.body;
+    const correoUsuario = correo ?? email;
+
+    if (!correoUsuario) {
+        return res.status(400).json({ message: "Debe enviar correo o email." });
+    }
+
+    const updates = [];
+    const values = [];
+    let index = 1;
+
+    if (condominio_id !== undefined) {
+        updates.push(`condominio_id = $${index}`);
+        values.push(condominio_id);
+        index += 1;
+    }
+
+    if (apartamento !== undefined) {
+        updates.push(`apartamento = $${index}`);
+        values.push(apartamento);
+        index += 1;
+    }
+
+    if (seccion !== undefined) {
+        updates.push(`seccion = $${index}`);
+        values.push(seccion);
+        index += 1;
+    }
+
+    if (updates.length === 0) {
+        return res.status(400).json({ message: "No hay datos para actualizar." });
+    }
+
+    values.push(correoUsuario);
 
     try {
-        // CAMBIO CLAVE: Usamos la columna 'correo' en el WHERE, no 'email'
         const result = await pool.query(
-            "UPDATE usuarios SET condominio_id = $1 WHERE correo = $2 RETURNING *",
-            [condominio_id, correo]
+            `UPDATE usuarios SET ${updates.join(", ")} WHERE correo = $${index} RETURNING *`,
+            values
         );
 
         if (result.rowCount === 0) {
@@ -262,7 +314,7 @@ export const updateUsuarioCondominio = async (req, res) => {
         }
 
         res.status(200).json({ 
-            message: "Propietario vinculado exitosamente",
+            message: "Datos actualizados correctamente",
             usuario: result.rows[0] 
         });
 

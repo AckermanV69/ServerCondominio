@@ -1,13 +1,18 @@
 import { pool } from "../db.js";
 
 export const registrarPago = async (req, res) => {
-    const { telefono, referencias, cedula, monto, fecha, correo, banco } = req.body;
+    const { telefono, referencias, referencia, cedula, monto, fecha, correo, email, banco } = req.body;
+    const correoUsuario = correo ?? email;
+    const referenciaPago = referencia ?? referencias;
+    if (!correoUsuario) {
+        return res.status(400).json({ message: "Debe enviar correo o email." });
+    }
 
     try {
         const result = await pool.query(
             `INSERT INTO pagos (usuario_email, telefono, referencia, cedula, monto, fecha_pago, banco) 
              VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-            [correo, telefono, referencias, cedula, monto, fecha, banco]
+            [correoUsuario, telefono, referenciaPago, cedula, monto, fecha, banco]
         );
 
         res.status(201).json({
